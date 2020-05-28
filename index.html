@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Analyzer</title>
+</head>
+<body>
+  <div style="display: flex;">
+    <main style="width: 350px;">
+      <h2>Initialize</h2>
+      <p id="initResult" style="font-size: 21px;">Initializing...</p>
+      <p id="timeInit" style="font-size: 21px;">Please wait...</p>
+      <canvas id="canvasMain" width="320" height="320" style="border: 2px solid;"></canvas>
+      <div class="main__control">
+        <button id="btnPredict">predict</button>
+        <button id="btnClear">clear</button>
+      </div>
+      <h3>Parameter</h3>
+    </main>
+    <aside style="width: 350px;">
+      <h2>Score</h2>
+      <h3>Input image</h3>
+      <canvas id="canvasOutput" width="128" height="128" style="border: 2px solid;"></canvas>
+      <h3>Processing</h3>
+      <p id="timeTotal" style="font-size: 21px;"></p>
+      <p id="timeResize" style="font-size: 21px;"></p>
+      <p id="timeInput" style="font-size: 21px;"></p>
+      <p id="timePredict" style="font-size: 21px;"></p>
+    </aside>
+    <div style="width: 350px;">
+      <h2>Result</h2>
+      <div id="result"></div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script>
+    "use strict";
+    // Variable for canvas
+    let canvas_mouse_event = false;
+    let oldX = 0;
+    let oldY = 0;
+    let sizeMain = 320;
+    let sizeModified = 32;
+    let arrayIndex = [];
+    let arrayScore = [];
+
+    // getElement
+    // canvas
+    let canMain = document.getElementById('canvasMain');
+    let ctxMain = canMain.getContext('2d');
+    let rect = canMain.getBoundingClientRect();
+    // btn
+    let btnPredict = document.getElementById('btnPredict');
+    let btnClear = document.getElementById('btnClear');
+
+    // output element
+    let initResultElement = document.getElementById('initResult');
+    let resultElement = document.getElementById('result');
+    let timeElement = document.getElementById('timeInit');
+    let timeTotalElement = document.getElementById('timeTotal');
+    let timeResizeElement = document.getElementById('timeResize');
+    let timeInputElement = document.getElementById('timeInput');
+    let timePredictElement = document.getElementById('timePredict');
+
+    // function
+    console.log(tf.version);
+
+    // canvas function
+    canMain.addEventListener('mousedown', e => {
+      oldX = e.clientX - rect.left;
+      oldY = e.clientY - rect.top;
+      canvas_mouse_event = true;
+    });
+    canMain.addEventListener('mousemove', e => {
+      if (canvas_mouse_event === true) {
+        drawLine(ctxMain, oldX, oldY, e.clientX - rect.left, e.clientY - rect.top);
+        oldX = e.clientX - rect.left;
+        oldY = e.clientY - rect.top;
+      }
+    });
+    canMain.addEventListener('mouseup', e => {
+      if (canvas_mouse_event === true) {
+        drawLine(ctxMain, oldX, oldY, e.clientX - rect.left, e.clientY - rect.top);
+        oldX = 0;
+        oldY = 0;
+        canvas_mouse_event = false;
+      }
+    });
+    canMain.addEventListener('mouseout', e => {
+      if (canvas_mouse_event === true) {
+        oldX = 0;
+        oldY = 0;
+        canvas_mouse_event = false;
+      }
+    });
+    function drawLine(ctx, x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 15;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.closePath();
+    };
+
+    // btn function
+    btnClear.addEventListener('click', function () {
+      ctxMain.beginPath();
+      ctxMain.clearRect(0, 0, canMain.width, canMain.height);
+    });
+    btnPredict.addEventListener('click', function () {
+      predection();
+    })
+
+    // tensorflow function
+    // tensorflow init
+    let model;
+    let MODEL_SIZE = [-1, -1, -1, -1];
+    async function initModel() {
+      try {
+        model = await tf.loadLayersModel("/conv_model_tfjs/model.json");
+        MODEL_SIZE = model.input.shape;//注意！
+        initResultElement.innerHTML = "init OK";
+        return model;
+      } catch (e) {
+        alert("[initModel] failed");
+        alert(e.message);
+        return null;
+      }
+    };
+    (async function () {
+      const t0 = performance.now();
+      model = await initModel();
+      const t1 = performance.now();
+      if (model === null) {
+        initResultElement.innerHTML = "init failed"
+        return;
+      }
+      timeElement.innerHTML = `Time[ms]: Init = ${(t1 - t0).toFixed(3)}`;
+    }());
+
+    // input tensor
+    function inputTensor(canMain) {
+      const tensor = tf.tidy(() => {
+        // convert to tensor (shape: [width, height, channels])
+        const channels = 4;
+        let input = tf.browser.fromPixels(canMain, channels);
+        input = input.squeeze();
+        input = input.resizeBilinear([sizeModified, sizeModified]);
+        /* Convert to grayscale (keep dimension(HWC))*/
+        input = input.mean(2, true);
+        /* Reverse black and white */
+        // input = tf.sub(tf.scalar(255), input);
+        // normalized
+        input = tf.cast(input, 'float32').div(tf.scalar(255));
+        // reshape input format (shape: [batch_size, width, height, channels])
+        return input = input.expandDims();
+      });
+      let img = tensor.resizeBilinear([128, 128]);
+      img = img.squeeze();
+      tf.browser.toPixels(img, document.getElementById("canvasOutput"));
+      return tensor;
+    }
+    // core
+    async function predection() {
+      // get image from canvas
+      const t2 = performance.now();
+      let canvasImage = ctxMain.getImageData(0, 0, sizeMain, sizeMain);
+      // input tensor
+      const t3 = performance.now();
+      let tensor = await inputTensor(canvasImage);
+      // ptrdict
+      const t4 = performance.now();
+      let score = await model.predict(tensor).dataSync();
+      tensor.dispose();
+      const t5 = performance.now();
+      // output top10
+      for (let i = 0; i < 10; i++) {
+        let maxAccuracy = score.indexOf(Math.max.apply(null, score));
+        arrayIndex.push(maxAccuracy);
+        let Value = score[maxAccuracy];
+        score[maxAccuracy] = 0;
+        arrayScore.push(Value);
+        let scoreText = `Rank ${i + 1} : ${maxAccuracy} Score : ${Value}`;
+        renderScore(scoreText);
+      }
+      // outputScore
+      timeTotalElement.innerHTML = `Time[ms]: Total = ${(t5 - t2).toFixed(3)}`;
+      timeResizeElement.innerHTML = `Time[ms]: Resize = ${(t3 - t2).toFixed(3)}`;
+      timeInputElement.innerHTML = `Time[ms]: Input tensor = ${(t4 - t3).toFixed(3)}`;
+      timePredictElement.innerHTML = `Time[ms]: Prediction = ${(t5 - t4).toFixed(3)}`;
+    }
+    // output function
+    function renderScore(scoreText) {
+      let li = document.createElement('li');
+      let indexDoc = document.createElement('p');
+      indexDoc.innerHTML = scoreText;
+      li.appendChild(indexDoc);
+      resultElement.appendChild(li);
+    }
+  </script>
+</body>
+</html>
