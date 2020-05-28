@@ -17,8 +17,9 @@
         <button id="btnClear">clear</button>
       </div>
       <h3>Parameter</h3>
+      <p id="para">input shape is</p>
     </main>
-    <aside style="width: 350px;">
+    <aside style="width: 400px;">
       <h2>Score</h2>
       <h3>Input image</h3>
       <canvas id="canvasOutput" width="128" height="128" style="border: 2px solid;"></canvas>
@@ -28,7 +29,7 @@
       <p id="timeInput" style="font-size: 21px;"></p>
       <p id="timePredict" style="font-size: 21px;"></p>
     </aside>
-    <div style="width: 350px;">
+    <div style="width: 500px;">
       <h2>Result</h2>
       <div id="result"></div>
     </div>
@@ -57,6 +58,7 @@
     // output element
     let initResultElement = document.getElementById('initResult');
     let resultElement = document.getElementById('result');
+    let paraElement = document.getElementById('para')
     let timeElement = document.getElementById('timeInit');
     let timeTotalElement = document.getElementById('timeTotal');
     let timeResizeElement = document.getElementById('timeResize');
@@ -121,9 +123,10 @@
     let MODEL_SIZE = [-1, -1, -1, -1];
     async function initModel() {
       try {
-        model = await tf.loadLayersModel("/conv_model_tfjs/model.json");
+        model = await tf.loadLayersModel("./conv_model_tfjs/model.json");
         MODEL_SIZE = model.input.shape;//注意！
         initResultElement.innerHTML = "init OK";
+        paraElement.innerHTML = `input shape is ${MODEL_SIZE}`;
         return model;
       } catch (e) {
         alert("[initModel] failed");
@@ -178,6 +181,9 @@
       tensor.dispose();
       const t5 = performance.now();
       // output top10
+      while (resultElement.firstChild) {
+        resultElement.removeChild(resultElement.firstChild);
+      }
       for (let i = 0; i < 10; i++) {
         let maxAccuracy = score.indexOf(Math.max.apply(null, score));
         arrayIndex.push(maxAccuracy);
@@ -195,11 +201,9 @@
     }
     // output function
     function renderScore(scoreText) {
-      let li = document.createElement('li');
       let indexDoc = document.createElement('p');
       indexDoc.innerHTML = scoreText;
-      li.appendChild(indexDoc);
-      resultElement.appendChild(li);
+      resultElement.appendChild(indexDoc);
     }
   </script>
 </body>
